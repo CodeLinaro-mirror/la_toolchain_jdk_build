@@ -145,7 +145,7 @@ mkdir -p "$build_dir"
      --x-includes="$sysroot/usr/include" \
      --with-extra-cflags="--sysroot=$sysroot -fno-delete-null-pointer-checks -flto=full -stdlib=libc++ --target=${target}" \
      --with-extra-cxxflags="--sysroot=$sysroot -fno-delete-null-pointer-checks -flto=full -stdlib=libc++ --target=${target}" \
-     --with-extra-ldflags="--sysroot=$sysroot -fuse-ld=lld -flto=full -rtlib=compiler-rt -stdlib=libc++ --target=${target}" \
+     --with-extra-ldflags="--sysroot=$sysroot -fuse-ld=lld -flto=full -rtlib=compiler-rt -stdlib=libc++ --target=${target} -ljemalloc5" \
      AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip CXXFILT=llvm-cxxfilt
 )
 
