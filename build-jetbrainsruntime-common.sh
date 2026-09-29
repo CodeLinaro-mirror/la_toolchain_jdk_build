@@ -64,6 +64,67 @@ function verifyMacBinaryCpuArchitecture() {
   fi
 }
 
+# "Installs" given Debian packages into specified directory.
+function unpack_dependencies() {
+  local -r target_dir="$1"
+  local -r ar="$clang_bin/llvm-ar"
+  shift
+  mkdir -p "$target_dir"
+  for deb in "$@"; do
+    # Debian package is actually 'ar' archive. The package files are in data.tar.<type>
+    # member. Extract and untar it.
+    case $("$ar" -t "$deb" | grep data.tar) in
+      data.tar.xz)
+        "$ar" -p "$deb" data.tar.xz | (cd "$target_dir" && tar -Jx)
+        ;;
+      data.tar.bz2)
+        "$ar" -p "$deb" data.tar.bz2 | (cd "$target_dir" && tar -jx)
+        ;;
+      data.tar.gz)
+        "$ar" -p "$deb" data.tar.gz | (cd "$target_dir" && tar -zx)
+        ;;
+      data.tar.zst)
+        "$ar" -p "$deb" data.tar.zst | (cd "$target_dir" && tar -I zstd -x)
+        ;;
+      *)
+        printf "%s does not contain expected archive\n" "$deb"
+        exit 1
+        ;;
+    esac
+    [[ -n "${quiet:-}" ]] || printf "Unpacked %s\n" "$deb"
+  done
+
+  # Rewrite absolute symlinks that point outside the sysroot to relative
+  # symlinks to the corresponding files in the sysroot.
+  for link in $(find "${target_dir}" -type l -lname '/*'); do
+    target=$(readlink ${link})
+    relative_target_dir=$(python -c 'import os.path, sys; print(os.path.relpath(*sys.argv[1:]))' ${target_dir} $(dirname ${link}))
+    relative_target=${relative_target_dir}/${target}
+    echo "Rewriting sysroot symlink ${link} from ${target} to ${relative_target}"
+    ln -sfn ${relative_target} ${link}
+  done
+}
+
+# Verifies that an ELF binary was built for the expected machine. Used by the
+# cross builds, where a silently misconfigured toolchain would otherwise produce
+# a build-host binary that looks perfectly fine until it reaches a target machine.
+function verifyLinuxBinaryCpuArchitecture() {
+  declare -r binary=$1
+  declare -r expected_arch=$2
+
+  if [ ! -f "$binary" ]; then
+    echo "$binary does not exists"
+    exit 2
+  fi
+
+  declare -r arch=$("$clang_bin/llvm-readelf" --file-header "$binary" | awk -F: '/Machine/ { print $2 }' | xargs)
+  echo "$binary machine: $arch"
+  if [[ ! "$arch" =~ "$expected_arch" ]]; then
+    echo "$binary is not built for $expected_arch"
+    exit 3
+  fi
+}
+
 function usage() {
   declare -r prog="${0##*/}"
   cat <<EOF

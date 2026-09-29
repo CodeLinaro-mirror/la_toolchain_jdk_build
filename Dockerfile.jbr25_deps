@@ -1,5 +1,20 @@
 FROM ubuntu:20.04
+
+# arm64 is enabled as a foreign dpkg architecture so that a single image can
+# serve the host-tools, x64 and arm64 download jobs. Ubuntu keeps amd64/i386
+# binaries on archive.ubuntu.com and every other architecture on
+# ports.ubuntu.com, so the default entries have to be pinned to amd64 before
+# arm64 can be added. deb-src entries are left unrestricted: source packages
+# are architecture independent and are fetched for license gathering.
 RUN sed -i '/deb-src/s/^# //' /etc/apt/sources.list && \
+    sed -i -E 's|^deb http|deb [arch=amd64] http|' /etc/apt/sources.list && \
+    dpkg --add-architecture arm64 && \
+    printf '%s\n' \
+      'deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports focal main restricted universe multiverse' \
+      'deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports focal-updates main restricted universe multiverse' \
+      'deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports focal-security main restricted universe multiverse' \
+      'deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports focal-backports main restricted universe multiverse' \
+      > /etc/apt/sources.list.d/arm64-ports.list && \
     apt-get update && \
     apt-get install -y \
       binutils  \

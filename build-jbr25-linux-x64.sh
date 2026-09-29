@@ -17,6 +17,8 @@ declare -r sources_dir="$top/external/jetbrains/JetBrainsRuntime25"
 # TODO switch to JBR as boot jdk
 declare -r boot_jdk="$top/prebuilts/jdk/studio/jbr25/linux/"
 declare -r build_deps="$top/toolchain/jdk/deps/jbr25/linux_x64"
+# Build host tools, shared with the aarch64 cross builds.
+declare -r host_tools_deps="$top/toolchain/jdk/deps/jbr25/linux_host_tools"
 
 echo "Building Linux JDK......."
 echo "out_path=${out_path:-}"
@@ -35,47 +37,6 @@ echo "ldd --version:"
 cat /etc/os-release
 ldd --version
 
-# "Installs" given Debian packages into specified directory.
-function unpack_dependencies() {
-	local -r target_dir="$1"
-	local -r ar="$clang_bin/llvm-ar"
-	shift
-	mkdir -p "$target_dir"
-	for deb in "$@"; do
-		# Debian package is actually 'ar' archive. The package files are in data.tar.<type>
-		# member. Extract and untar it.
-		case $("$ar" -t "$deb" | grep data.tar) in
-		data.tar.xz)
-			"$ar" -p "$deb" data.tar.xz | (cd "$target_dir" && tar -Jx)
-			;;
-		data.tar.bz2)
-			"$ar" -p "$deb" data.tar.bz2 | (cd "$target_dir" && tar -jx)
-			;;
-		data.tar.gz)
-			"$ar" -p "$deb" data.tar.gz | (cd "$target_dir" && tar -zx)
-			;;
-		data.tar.zst)
-			"$ar" -p "$deb" data.tar.zst | (cd "$target_dir" && tar -I zstd -x)
-			;;
-		*)
-			printf "%s does not contain expected archive\n" "$deb"
-			exit 1
-			;;
-		esac
-		[[ -n "${quiet:-}" ]] || printf "Unpacked %s\n" "$deb"
-	done
-
-	# Rewrite absolute symlinks that point outside the sysroot to relative
-	# symlinks to the corresponding files in the sysroot.
-	for link in $(find "${target_dir}" -type l -lname '/*'); do
-		target=$(readlink ${link})
-		relative_target_dir=$(python -c 'import os.path, sys; print(os.path.relpath(*sys.argv[1:]))' ${target_dir} $(dirname ${link}))
-		relative_target=${relative_target_dir}/${target}
-		echo "Rewriting sysroot symlink ${link} from ${target} to ${relative_target}"
-		ln -sfn ${relative_target} ${link}
-	done
-}
-
 function dist_logs() {
 	[[ -e "${build_dir}/build.log" ]] && cp "${build_dir}/build.log" "${dist_dir}/"
 	[[ -e "${build_dir}/configure-support/config.log" ]] && cp "${build_dir}/configure-support/config.log" "${dist_dir}/"
@@ -91,6 +52,12 @@ else
 	# Most of dependencies are from Ubuntu 20.04
 	# see download-deps-jbr25-x64.sh and Dockerfile.jbr25_deps
 	unpack_dependencies "$sysroot" $build_deps/*.deb
+
+	# wayland-scanner is a code generator that runs on the build host, so it is
+	# shared with the cross builds rather than listed as a target dependency.
+	# For this native build the build host is the target, so it can simply go
+	# into the sysroot like any other amd64 package.
+	unpack_dependencies "$sysroot" $host_tools_deps/*.deb
 
 	# Ubuntu 20.04 have too old version of wayland-protocols
 	# use separatelly downloaded 1.45 version
@@ -210,5 +177,14 @@ echo "Creating java runtime ...."
 	zip -9rDy${quiet:+q} "${dist_dir}/jdk-runtime.zip" .
 	echo "Java Runtime Done"
 )
+
+# Temporary: run the aarch64 cross build during the x64 CI job to verify both
+# Linux JBR25 targets on the CI environment.
+echo "=== Temporary CI test: Building Linux aarch64 (glibc) ==="
+"$(dirname "$0")/build-jbr25-linux-aarch64.sh" \
+	${quiet:+-q} \
+	-b "$build_number" \
+	-o "$out_path/linux-aarch64" \
+	-d "$dist_dir/linux-aarch64"
 
 echo "All Done!"

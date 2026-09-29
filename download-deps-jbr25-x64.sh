@@ -1,5 +1,13 @@
 #!/bin/bash -e
 
+# Downloads the amd64 dependencies needed to hermetically build JBR25 for
+# linux-x86_64. Expects to be run inside the Ubuntu container built from
+# Dockerfile.jbr25_deps, via download-deps-jbr25-in-docker.sh.
+#
+# libwayland-bin is not listed here. wayland-scanner is a build host tool rather
+# than a target library, so it is shared with the cross builds through
+# download-deps-jbr25-host-tools.sh.
+
 pkgs=$(
 	echo \
 		libasound2 \
@@ -13,7 +21,6 @@ pkgs=$(
 		libpng-dev \
 		libspeechd-dev \
 		libspeechd2 \
-		libwayland-bin \
 		libwayland-client0 \
 		libwayland-cursor0 \
 		libwayland-dev \
@@ -30,7 +37,6 @@ pkgs=$(
 		libxfixes-dev \
 		libxi-dev \
 		libxkbcommon-dev \
-		libxkbcommon-dev \
 		libxkbcommon-x11-0 \
 		libxkbcommon0 \
 		libxrandr-dev \
@@ -43,7 +49,15 @@ pkgs=$(
 		x11proto-dev
 )
 
-cd $(dirname $0)/../deps
+source $(dirname $0)/download-deps-jbr25-common.sh
+
+# The caller bind-mounts toolchain/jdk/deps/jbr25 here.
+deps_root=$(cd $(dirname $0)/../deps && pwd)
+target_dir=$deps_root/linux_x64
+
+rm -rf $target_dir
+mkdir -p $target_dir/src
+cd $target_dir
 
 echo "Requested packages: $pkgs"
 
@@ -52,38 +66,7 @@ echo "Requested packages: $pkgs"
 wget https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/wayland-protocols/1.45-1~ubuntu0.24.04.1/wayland-protocols_1.45.orig.tar.xz
 
 apt-get download $pkgs
-(mkdir -p src && cd src && apt-get source --download-only $pkgs)
+(cd src && apt-get source --download-only $pkgs)
 
-function deb_to_license() {
-	local data=$(ar t $1 | grep data.tar)
-	local decompress
-	if [ "${data}" = "data.tar.xz" ]; then
-		decompress="-J"
-	elif [ "${data}" = "data.tar.bz2" ]; then
-		decompress="-j"
-	elif [ "${data}" = "data.tar.gz" ]; then
-		decompress="-z"
-	elif [ "${data}" = "data.tar.zst" ]; then
-		decompress="-I zstd"
-	else
-		echo "Unrecognized data file '${data}' in $1" >&2
-		exit 1
-	fi
-
-	ar p $1 ${data} | tar x ${decompress} -O --wildcards "./usr/share/doc/*/copyright" 2>/dev/null || true
-}
-
-rm -f LICENSE LICENSE.tmp
-for i in *.deb; do
-	deb_to_license $i >LICENSE.tmp
-	if [ -s LICENSE.tmp ]; then
-		(
-			echo $i
-			printf '=%.0s' $(seq 1 ${#i})
-			echo
-			cat LICENSE.tmp
-			echo
-		) >>LICENSE
-	fi
-	rm -f LICENSE.tmp
-done
+share_sources "$target_dir/src" "$deps_root/linux_src"
+write_deb_licenses
