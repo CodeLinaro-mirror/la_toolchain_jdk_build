@@ -36,6 +36,7 @@ pkgs=$(
 		libxext6 \
 		libxfixes-dev \
 		libxi-dev \
+		libxi6 \
 		libxkbcommon-dev \
 		libxkbcommon-x11-0 \
 		libxkbcommon0 \
@@ -44,6 +45,7 @@ pkgs=$(
 		libxrender1 \
 		libxt-dev \
 		libxtst-dev \
+		libxtst6 \
 		linux-libc-dev \
 		wayland-protocols \
 		x11proto-dev

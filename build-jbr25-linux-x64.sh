@@ -129,6 +129,9 @@ else
 	declare -r make_log_level=${quiet:+warn}
 	make -C "$build_dir" LOG=${make_log_level:-debug} ${quiet:+-s} images
 
+	bundleLinuxLibraries "$build_dir/images/jdk" "$sysroot" "$sysroot/usr/lib/x86_64-linux-gnu" "X86-64"
+	verifyLinuxSharedLibraryDependencies "$build_dir/images/jdk" "$linux_target_system_libraries"
+
 	rm -rf "$dist_dir"/{jdk.zip,jdk-debuginfo.zip,jdk-runtime.zip,build.log,configure.log}
 	(
 		cd "$build_dir/images/jdk"
@@ -169,6 +172,9 @@ echo "Creating java runtime ...."
 		--module-path="${jbr_jdk_dir}/jmods" \
 		--add-modules ${modules} \
 		--output "${runtime_image_dir}"
+
+	copyBundledLinuxLibraries "${jbr_jdk_dir}" "${runtime_image_dir}"
+	verifyLinuxSharedLibraryDependencies "${runtime_image_dir}" "$linux_target_system_libraries"
 
 	grep -v "^JAVA_VERSION" "${jbr_jdk_dir}/release" | grep -v "^MODULES" >>"${runtime_image_dir}/release"
 	cp "${runtime_image_dir}/release" "${dist_dir}"

@@ -76,7 +76,7 @@ toolchain/jdk/deps/jbr25/
    - Both `.deb` files are downloaded in `target_toolchain_linkonly_pkgs`, but excluded from `apt-get source` because neither `libgcc_s.so.1` nor `libstdc++.so.6` appears in `DT_NEEDED` of any shipped binary.
 2. **Debian `-dev` Symlinks vs. Runtime Packages:**
    - Debian `-dev` packages ship `.so` symlinks (e.g., `libXtst.so -> libXtst.so.6`) whose targets live in runtime packages (`libxtst6`).
-   - If a library is linked by OpenJDK but its runtime `.deb` is omitted, the `.so` symlink dangles and the linker falls back to the static `.a` archive. On `aarch64`, linking non-PIC `libXtst.a` into `libawt_xawt.so` fails with relocation error `R_AARCH64_ADR_PREL_PG_HI21 against symbol '__stack_chk_guard'`. (On `x86_64`, the linker silently statically links `libXi.a` and `libXtst.a` into `libawt_xawt.so`—tracked in [b/561712262](http://b/561712262)).
+   - If a library is linked by OpenJDK but its runtime `.deb` is omitted, the `.so` symlink dangles and the linker falls back to the static `.a` archive. On `aarch64`, linking non-PIC `libXtst.a` into `libawt_xawt.so` fails with relocation error `R_AARCH64_ADR_PREL_PG_HI21 against symbol '__stack_chk_guard'`. (On `x86_64` this used to go unnoticed: the linker statically linked `libXi.a` and `libXtst.a` into `libawt_xawt.so`, [b/561712262](http://b/561712262). Both Linux targets now download `libxi6`/`libxtst6`.)
    - Conversely, runtime packages for libraries that are *never* linked by OpenJDK (`libpng16-16`, `libxrandr2`, `libxt6`, `libice6`, `libsm6`) are excluded. `lib-x11.m4` defines `X_PRE_LIBS="-lSM -lICE"` but never `AC_SUBST`s it, and `make/` never links `-lXt`, `-lICE`, `-lSM`, or `-lXrandr`. Header packages (`libxt-dev`, `libxrandr-dev`) are kept because `lib-x11.m4` checks for `Intrinsic.h` and `Xrandr.h` with `AC_MSG_ERROR`.
 
 ---
@@ -131,6 +131,8 @@ Default CDS archive dumping (`--generate-cds-archive`) is automatically disabled
 
 - **FreeType Policy (`JDK-8193017`):**
   Use `--with-freetype=system` on all Linux targets (`x86_64`, `aarch64`) and `--with-freetype=bundled` on macOS and Windows. On Linux, `configure` checks for an unversioned `libfreetype.so` library file; scripts create `ln -sfn libfreetype.so.6 $sysroot/usr/lib[/aarch64-linux-gnu]/libfreetype.so` and pass `--with-freetype-include="$sources_dir/src/java.desktop/share/native/libfreetype/include"`.
+- **Bundled `libXi` / `libXtst`:**
+  `libawt_xawt.so` links `libXi.so.6` and `libXtst.so.6`, which are not installed on every desktop system (the Googlebook Linux Terminal image has no `libxi6`); without them the X11 toolkit fails to load. Both Linux scripts copy them from the sysroot into `lib/` of the JDK and runtime images (`bundleLinuxLibraries`, `copyBundledLinuxLibraries`), with the Debian copyright files under `legal/bundled-libraries/`. `libawt_xawt.so` finds them through its `$ORIGIN` rpath. `verifyLinuxSharedLibraryDependencies` then fails the build if any `DT_NEEDED` entry is neither shipped in the image nor in `$linux_target_system_libraries` (glibc, `libX11`, `libXext`, `libXrender`, `libfreetype`, `libasound`, `libwayland-client`, `libwayland-cursor`, `libxkbcommon`).
 - **Wayland Protocols Overlay:**
   JBR25's Wakefield/AWT implementation requires Wayland protocols (`fractional-scale-v1`, `idle-notify-v1`) introduced after Ubuntu 20.04's `wayland-protocols` 1.20 package. Both Linux builds (`x86_64` and `aarch64`) unpack `toolchain/jdk/deps/wayland-protocols-1.45.tar.xz` over `$sysroot/usr/share/wayland-protocols`.
 - **Reproducible Timestamps (`SOURCE_DATE_EPOCH`):**
@@ -149,6 +151,6 @@ Default CDS archive dumping (`--generate-cds-archive`) is automatically disabled
 | Bug ID | Summary | Status |
 | :--- | :--- | :--- |
 | [b/561712160](http://b/561712160) | Host `autoconf` leak in older Linux OpenJDK/JBR build scripts (`install_autoconf` not called) | Open (Fixed in new `aarch64` script) |
-| [b/561712262](http://b/561712262) | `build-jbr25-linux-x64.sh` statically links `libXi.a`/`libXtst.a` into `libawt_xawt.so` due to missing runtime `.deb`s | Open (Fixed in `aarch64` script) |
+| [b/561712262](http://b/561712262) | `build-jbr25-linux-x64.sh` statically links `libXi.a`/`libXtst.a` into `libawt_xawt.so` due to missing runtime `.deb`s | Fixed (both scripts link and bundle `libXi.so.6`/`libXtst.so.6`) |
 | [b/561729389](http://b/561729389) | Duplicate `--with-tools-dir` and `--with-toolchain-path` flags in older build scripts | Open (Fixed in `aarch64` script) |
 | [b/562108269](http://b/562108269) | Missing `export` on `SOURCE_DATE_EPOCH` in older OpenJDK/JBR build scripts | Open (Fixed in `aarch64` script) |
