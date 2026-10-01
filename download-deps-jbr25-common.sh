@@ -41,6 +41,29 @@ write_deb_licenses() {
 	done
 }
 
+# True when two source packages hold the same content.
+#
+# Debian source tarballs are downloaded verbatim and compare byte for byte, but
+# Alpine's abuild repacks its .src.tar.gz on every run, so the gzip and tar
+# timestamps differ even when the packaged files are identical. Fall back to
+# comparing the extracted trees in that case.
+same_source() {
+	if cmp -s "$1" "$2"; then return 0; fi
+	case "$1" in
+	*.tar.gz | *.tgz) ;;
+	*) return 1 ;;
+	esac
+
+	local tmp=$(mktemp -d)
+	local rc=1
+	mkdir -p "$tmp/a" "$tmp/b"
+	if tar xzf "$1" -C "$tmp/a" && tar xzf "$2" -C "$tmp/b"; then
+		diff -r "$tmp/a" "$tmp/b" >/dev/null 2>&1 && rc=0
+	fi
+	rm -rf "$tmp"
+	return $rc
+}
+
 # Moves the source packages a target just downloaded into the shared source
 # tree and leaves a relative symlink behind.
 #
@@ -69,7 +92,7 @@ share_sources() {
 			# Same file name is expected to mean the same source. Verify
 			# rather than assume, because silently keeping the wrong source
 			# tarball would only be noticed during a license audit.
-			if ! cmp -s "$f" "$shared_src/$name"; then
+			if ! same_source "$f" "$shared_src/$name"; then
 				echo "Source package $name differs between targets, refusing to share it" >&2
 				exit 1
 			fi

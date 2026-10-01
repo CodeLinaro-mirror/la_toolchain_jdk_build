@@ -16,6 +16,7 @@ All build scripts reside in `toolchain/jdk/build/` and accept common flags parse
 | :--- | :--- | :--- | :--- | :--- |
 | `linux-x86_64` | `build-jbr25-linux-x64.sh` | Native (`x86_64` host) | `glibc` 2.19 | Ubuntu 20.04 amd64 debs (`deps/jbr25/linux_x64`) + Ubuntu 14.04 `libc6`/`libgcc`/`libstdc++` overlay (`deps/`) |
 | `linux-aarch64` (glibc) | `build-jbr25-linux-aarch64.sh` | Cross (`x86_64` host) | `glibc` 2.31 (symbols $\le$ `2.29`) | Ubuntu 20.04 arm64 debs (`deps/jbr25/linux_arm64`) |
+| `linux-musl-aarch64-headless` (musl, headless-only) | `build-jbr25-linux-musl-aarch64-headless.sh` | Cross (`x86_64` host) | `musl` 1.2.6, shipped in `lib/` | `prebuilts/build-tools/sysroots/aarch64-unknown-linux-musl` + Alpine 3.23 aarch64 apks (`deps/jbr25/linux_musl_arm64_headless`) |
 | `mac-x64` | `build-jbr25-mac-x64.sh` | Native (`x86_64` macOS) | macOS SDK | Xcode macOS SDK |
 | `mac-aarch64` | `build-jbr25-mac-aarch64.sh` | Native (`arm64` macOS) | macOS SDK | Xcode macOS SDK |
 | `win-x64` | `build-jbr25-win-x64.{sh,cmd}` | Native (`x86_64` Windows) | MSVC CRT | Visual Studio toolchain |
@@ -50,7 +51,7 @@ Generic POSIX/OS utilities that merely move bytes around and do not link into or
 All Linux JBR25 dependencies are fetched via Docker using a single entry point:
 
 ```bash
-./toolchain/jdk/build/download-deps-jbr25-in-docker.sh [host-tools|x64|arm64|all]
+./toolchain/jdk/build/download-deps-jbr25-in-docker.sh [host-tools|x64|arm64|musl-arm64-headless|all]
 ```
 
 ### Directory Structure & Source Deduplication
@@ -59,15 +60,17 @@ toolchain/jdk/deps/jbr25/
 ├── linux_src/          # Shared upstream source tarballs (.orig.tar.*, .debian.tar.*, .dsc) (333 MB)
 ├── linux_host_tools/   # amd64 packages executed on the build host (libwayland-bin) (32 KB)
 ├── linux_x64/          # Ubuntu 20.04 amd64 binary & -dev .deb packages (6.6 MB)
-└── linux_arm64/        # Ubuntu 20.04 arm64 + all binary & -dev .deb packages (15 MB)
+├── linux_arm64/        # Ubuntu 20.04 arm64 + all binary & -dev .deb packages (15 MB)
+└── linux_musl_arm64_headless/  # Alpine 3.23 aarch64 .apk packages for the headless musl build (650 KB)
 ```
 
 - **Source Sharing (`share_sources` in `download-deps-jbr25-common.sh`):**
   Upstream source packages are architecture-independent (e.g., `linux_5.4.0.orig.tar.gz` alone is 163 MB). Each target directory contains a `src/` subdirectory populated strictly with relative symlinks (`../../linux_src/<filename>`). Deduplicating `src/` across `x64` and `arm64` avoids checking in a second copy of every shared tarball.
 - **Collision Verification:**
-  When moving a downloaded source archive into `linux_src/`, `share_sources` refuses to replace an existing file of the same name unless `cmp -s` confirms identical content. Unreferenced files in `linux_src/` are pruned at the end of `download-deps-jbr25-in-docker.sh`.
+  When moving a downloaded source archive into `linux_src/`, `share_sources` refuses to replace an existing file of the same name unless `same_source` confirms identical content: `cmp -s` first, and for `.tar.gz` a comparison of the extracted trees, because Alpine's `abuild srcpkg` regenerates its `.src.tar.gz` with fresh tar/gzip timestamps on every run. Unreferenced files in `linux_src/` are pruned at the end of `download-deps-jbr25-in-docker.sh`.
 - **Container Privilege Handling:**
   The Ubuntu container (`Dockerfile.jbr25_deps`) drops privileges via `docker-entrypoint.sh` using `USER_ID`/`GROUP_ID`, so downloaded files are owned by the invoking user. The same image downloads host-tools, amd64 and arm64 packages (arm64 is enabled as a foreign dpkg architecture via `ports.ubuntu.com`).
+  The Alpine container (`Dockerfile.musl_deps`, shared with `download-deps-musl.sh`) has no such entrypoint and runs as root; `download-deps-jbr25-musl-arm64-headless.sh` ends with `chown -R $USER_ID:$GROUP_ID` over its target directory and `linux_src/`. Alpine is required because Ubuntu packages neither `apk-tools` nor `abuild`, which produces the Alpine source packages. `apk --arch aarch64 fetch` downloads foreign packages from an x86_64 container without emulation. Alpine signs each architecture's repositories with different keys and `apk` trusts only `/etc/apk/keys/`, which holds the image's own architecture; the script copies the aarch64 keys from `/usr/share/apk/keys/aarch64/` (shipped by the preinstalled `alpine-keys` package), otherwise the index is rejected with `UNTRUSTED signature`. `apk fetch` does not resolve dependencies, so every package is named explicitly.
 
 ### Package Selection & Pruning Decisions
 1. **Toolchain Link-Only Packages (`libgcc-s1` and `libstdc++6`):**
@@ -78,6 +81,8 @@ toolchain/jdk/deps/jbr25/
    - Debian `-dev` packages ship `.so` symlinks (e.g., `libXtst.so -> libXtst.so.6`) whose targets live in runtime packages (`libxtst6`).
    - If a library is linked by OpenJDK but its runtime `.deb` is omitted, the `.so` symlink dangles and the linker falls back to the static `.a` archive. On `aarch64`, linking non-PIC `libXtst.a` into `libawt_xawt.so` fails with relocation error `R_AARCH64_ADR_PREL_PG_HI21 against symbol '__stack_chk_guard'`. (On `x86_64` this used to go unnoticed: the linker statically linked `libXi.a` and `libXtst.a` into `libawt_xawt.so`, [b/561712262](http://b/561712262). Both Linux targets now download `libxi6`/`libxtst6`.)
    - Conversely, runtime packages for libraries that are *never* linked by OpenJDK (`libpng16-16`, `libxrandr2`, `libxt6`, `libice6`, `libsm6`) are excluded. `lib-x11.m4` defines `X_PRE_LIBS="-lSM -lICE"` but never `AC_SUBST`s it, and `make/` never links `-lXt`, `-lICE`, `-lSM`, or `-lXrandr`. Header packages (`libxt-dev`, `libxrandr-dev`) are kept because `lib-x11.m4` checks for `Intrinsic.h` and `Xrandr.h` with `AC_MSG_ERROR`.
+3. **Headless musl Package Set:**
+   - With `--enable-headless-only`, `libraries.m4` sets `NEEDS_LIB_X11`, `NEEDS_LIB_WAYLAND` and `NEEDS_LIB_SPEECHD` to false, so no X11, Wayland or xkbcommon package is needed. ALSA, CUPS, fontconfig and dbus are still configured: `lib-dbus.m4` requires dbus headers on Linux regardless of headless mode (`libawt` compiles `dbus_interface.c`). Only `libasound` reaches a link line (`libjsound`); CUPS, fontconfig and dbus are `dlopen`ed, so their `-dev` packages suffice. The complete list is `alsa-lib`, `alsa-lib-dev`, `cups-dev`, `dbus-dev`, `fontconfig-dev`. freetype, libpng and zlib are bundled from the JDK sources.
 
 ---
 
@@ -125,12 +130,20 @@ To make classlist generation deterministic and independent of host X11 state:
 ### 4.6 CDS Archive Generation in Cross-Builds
 Default CDS archive dumping (`--generate-cds-archive`) is automatically disabled when cross-compiling (`checking if CDS archive is available... no (not possible with cross compilation)`) because dumping a shared archive requires executing the target `aarch64` JVM binary on the build host. Passing `--enable-jvm-feature-cds` to `configure` is still required so the compiled JVM supports CDS at runtime.
 
+### 4.7 musl Specifics (`build-jbr25-linux-musl-aarch64-headless.sh`)
+The headless musl build follows `build-openjdk25-linux-musl.sh`, the musl JDK used by the Android platform build, with the JBR configuration of the other scripts. It exists for the Android CLI tools, which run the JVM with `-Djava.awt.headless=true` and `jlink` their own runtime from the JDK's `jmods` (`tools/vendor/google/cli/jbinary` in `studio-main`), and must not depend on the host's libc or desktop libraries.
+- **Sysroot:** `prebuilts/build-tools/sysroots/aarch64-unknown-linux-musl` (hermetic, relinterp-based musl 1.2.6: produced binaries have no `PT_INTERP`, which is a property of that sysroot, not a cross-compilation defect) is copied into `$sysroot`, and the Alpine apks are unpacked on top. Alpine is not multiarch, so everything is under `usr/lib`.
+- **Shipped libc:** `lib/libc_musl.so` and `lib/libjemalloc5.so` are copied into both images (plus `legal/musl/LICENSE`); `bin/java` and the JDK libraries find them through their `$ORIGIN` rpaths. The sysroot's `libc.so` is the linker script `GROUP ( libc_musl.so libjemalloc5.so )`, so jemalloc is linked implicitly today; that implicit link is going away ([b/533100825](http://b/533100825)), so the script passes `-ljemalloc5` explicitly, as `build-openjdk25-linux-musl.sh` does.
+- **`-DMUSL_LIBC` leak into build-host flags:** `flags-cflags.m4` derives `-DMUSL_LIBC` from the *target* libc into `OS_CFLAGS`, which ends up in both the target and the build-platform `CFLAGS_JVM_COMMON`. Compiling the interim build JDK's Hotspot on the glibc host then fails (`os_linux.cpp:143:14: error: static declaration of 'dlvsym' follows non-static declaration`). Upstream assumes a native Alpine build. `--with-build-jdk` (section 4.3) sidesteps the interim JDK entirely.
+- **Headless-only:** `--enable-headless-only` drops `libawt_xawt`, `libawt_wlawt` and `libsplashscreen` (`AwtLibraries.gmk`; `libjawt` is still built, with `-DHEADLESS` and linked against `libawt_headless`), and with them every X11 and Wayland dependency, including `wayland-scanner`. `java.desktop` is still built and works in headless mode. `verifyHeadlessImage` fails the build if `libawt_headless.so` is missing or any of the toolkit libraries is present.
+- **Loader search path:** the bundled musl loader searches only `/lib:/usr/local/lib:/usr/lib` (plus `LD_LIBRARY_PATH` and the `needed_by` chain's rpaths) and never Debian multiarch directories. On a glibc distribution a system library would therefore neither be found nor be loadable (it would be glibc-linked). This is why freetype is bundled here (section 5). `libasound.so.2` is the only remaining external `DT_NEEDED` (`$musl_headless_target_system_libraries`); `libjsound` loads only when sound is used. `libfontconfig.so.1` and `libcups.so.2` are `dlopen`ed and resolve only where a musl build of them is installed under `/usr/lib` (Alpine); fontconfig-dependent font lookup on other distributions is an open item.
+
 ---
 
 ## 5. Platform & Configuration Decisions
 
 - **FreeType Policy (`JDK-8193017`):**
-  Use `--with-freetype=system` on all Linux targets (`x86_64`, `aarch64`) and `--with-freetype=bundled` on macOS and Windows. On Linux, `configure` checks for an unversioned `libfreetype.so` library file; scripts create `ln -sfn libfreetype.so.6 $sysroot/usr/lib[/aarch64-linux-gnu]/libfreetype.so` and pass `--with-freetype-include="$sources_dir/src/java.desktop/share/native/libfreetype/include"`.
+  Use `--with-freetype=system` on the glibc Linux targets (`x86_64`, `aarch64`) and `--with-freetype=bundled` on macOS and Windows. On Linux, `configure` checks for an unversioned `libfreetype.so` library file; scripts create `ln -sfn libfreetype.so.6 $sysroot/usr/lib[/aarch64-linux-gnu]/libfreetype.so` and pass `--with-freetype-include="$sources_dir/src/java.desktop/share/native/libfreetype/include"`. The headless musl build uses `--with-freetype=bundled`, like `build-openjdk25-linux-musl.sh`: the musl loader cannot use a glibc distribution's freetype (section 4.7), and `libfontmanager.so` links it unconditionally.
 - **Bundled `libXi` / `libXtst`:**
   `libawt_xawt.so` links `libXi.so.6` and `libXtst.so.6`, which are not installed on every desktop system (the Googlebook Linux Terminal image has no `libxi6`); without them the X11 toolkit fails to load. Both Linux scripts copy them from the sysroot into `lib/` of the JDK and runtime images (`bundleLinuxLibraries`, `copyBundledLinuxLibraries`), with the Debian copyright files under `legal/bundled-libraries/`. `libawt_xawt.so` finds them through its `$ORIGIN` rpath. `verifyLinuxSharedLibraryDependencies` then fails the build if any `DT_NEEDED` entry is neither shipped in the image nor in `$linux_target_system_libraries` (glibc, `libX11`, `libXext`, `libXrender`, `libfreetype`, `libasound`, `libwayland-client`, `libwayland-cursor`, `libxkbcommon`).
 - **Wayland Protocols Overlay:**
