@@ -26,7 +26,7 @@ if [ -f "$dist_dir"/jdk.zip ]; then
   echo "Re-using existing JDK $dist_dir/jdk.zip"
 else
   declare -r jbr_tag="$(sed 's/^.*b//' "$sources_dir/build.txt")"
-  SOURCE_DATE_EPOCH=$(source_date_epoch $sources_dir)
+  export SOURCE_DATE_EPOCH=$(source_date_epoch $sources_dir)
 
   # Configure
   mkdir -p "$build_dir"

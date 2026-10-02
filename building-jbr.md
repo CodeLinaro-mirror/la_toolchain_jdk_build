@@ -136,7 +136,7 @@ Default CDS archive dumping (`--generate-cds-archive`) is automatically disabled
 - **Wayland Protocols Overlay:**
   JBR25's Wakefield/AWT implementation requires Wayland protocols (`fractional-scale-v1`, `idle-notify-v1`) introduced after Ubuntu 20.04's `wayland-protocols` 1.20 package. Both Linux builds (`x86_64` and `aarch64`) unpack `toolchain/jdk/deps/wayland-protocols-1.45.tar.xz` over `$sysroot/usr/share/wayland-protocols`.
 - **Reproducible Timestamps (`SOURCE_DATE_EPOCH`):**
-  `SOURCE_DATE_EPOCH` must be exported (`export SOURCE_DATE_EPOCH=$(source_date_epoch $sources_dir)`). Assigning it without `export` causes `configure` to fall back to `from 'current' (default)`, embedding wall-clock timestamps into zip/jmod archives. (Tracked for older scripts in [b/562108269](http://b/562108269)).
+  `SOURCE_DATE_EPOCH` must be exported (`export SOURCE_DATE_EPOCH=$(source_date_epoch $sources_dir)`). Assigning it without `export` causes `configure` to fall back to `from 'current' (default)`, embedding wall-clock timestamps into zip/jmod archives ([b/562108269](http://b/562108269)).
 - **Omission of Redundant Configure Flags:**
   - `--x-includes` and `--x-libraries` are omitted when `--with-sysroot` is provided (`lib-x11.m4` automatically derives `$sysroot/usr/include` and `$sysroot/usr/lib[/aarch64-linux-gnu]`).
   - `--with-tools-dir` is a backwards-compatibility alias for `--with-toolchain-path` (`basic.m4`); passing both duplicates entries in `TOOLCHAIN_PATH` ([b/561729389](http://b/561729389)). Only `--with-toolchain-path` is used.
@@ -153,4 +153,4 @@ Default CDS archive dumping (`--generate-cds-archive`) is automatically disabled
 | [b/561712160](http://b/561712160) | Host `autoconf` leak in older Linux OpenJDK/JBR build scripts (`install_autoconf` not called) | Open (Fixed in new `aarch64` script) |
 | [b/561712262](http://b/561712262) | `build-jbr25-linux-x64.sh` statically links `libXi.a`/`libXtst.a` into `libawt_xawt.so` due to missing runtime `.deb`s | Fixed (both scripts link and bundle `libXi.so.6`/`libXtst.so.6`) |
 | [b/561729389](http://b/561729389) | Duplicate `--with-tools-dir` and `--with-toolchain-path` flags in older build scripts | Open (Fixed in `aarch64` script) |
-| [b/562108269](http://b/562108269) | Missing `export` on `SOURCE_DATE_EPOCH` in older OpenJDK/JBR build scripts | Open (Fixed in `aarch64` script) |
+| [b/562108269](http://b/562108269) | Missing `export` on `SOURCE_DATE_EPOCH` in JBR build scripts | Fixed |

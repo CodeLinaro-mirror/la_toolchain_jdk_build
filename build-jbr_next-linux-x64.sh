@@ -74,7 +74,7 @@ if [ -f "$dist_dir"/jdk.zip ]; then
 else
 
   declare -r jbr_tag="$(sed 's/^.*b//' "$sources_dir/build.txt")"
-  SOURCE_DATE_EPOCH=$(source_date_epoch $sources_dir)
+  export SOURCE_DATE_EPOCH=$(source_date_epoch $sources_dir)
 
   # Prepare
   unpack_dependencies "$sysroot" $top/toolchain/jdk/deps/*.deb
