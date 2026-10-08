@@ -61,8 +61,7 @@ declare -r out_path=$(make_target_dir "$1")
 declare -r sysroot=$(xcrun --show-sdk-path)
 declare -r build_dir="$out_path/build"
 declare -r top=$(realpath "$(dirname "$0")/../../..")
-# Use the most recent clang version that works. Builds with r530567 fail.
-declare -r clang_bin="$top/prebuilts/clang/host/darwin-x86/clang-r522817/bin"
+declare -r clang_bin="$top/prebuilts/clang/host/darwin-x86/clang-r614150/bin"
 declare -r autoconf_dir=$(make_target_dir "$out_path/autoconf")
 
 # So that configure finds tools like dsymutil in ${clang_bin} instead of /usr/bin
@@ -99,6 +98,7 @@ mkdir -p "$build_dir"
      --with-version-opt=${BUILD_NUMBER:-0} \
      --with-vendor-version-string=Android_PDK \
      --with-zlib=bundled \
+     --with-extra-cflags="-fno-define-target-os-macros" \
      AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip
 )
 
