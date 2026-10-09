@@ -300,7 +300,7 @@ declare -r autoconf_dir=$(make_target_dir "$out_path/autoconf")
 
 case $(uname) in
   Linux)
-    declare -r clang_bin="$top/prebuilts/clang/host/linux-x86/clang-r596125/bin"
+    declare -r clang_bin="$top/prebuilts/clang/host/linux-x86/clang-r614150/bin"
     declare -r sysroot="$out_path/sysroot"
     ;;
   Darwin)

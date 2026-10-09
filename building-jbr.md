@@ -33,7 +33,7 @@ Each build produces three primary archives in `<dist_dir>`:
 **Core Rule:** Nothing from the build host's system libraries, headers, or compilers may be linked into or used to configure or compile build artifacts.
 
 ### What Must Be Hermetic
-- **Toolchain & Binutils:** Provided by `prebuilts/clang/host/linux-x86/clang-r596125/bin` (`clang`, `clang++`, `lld`, `llvm-ar`, `llvm-nm`, `llvm-objcopy`, `llvm-objdump`, `llvm-strip`, `llvm-cxxfilt`).
+- **Toolchain & Binutils:** Provided by `prebuilts/clang/host/linux-x86/clang-r614150/bin` (`clang`, `clang++`, `lld`, `llvm-ar`, `llvm-nm`, `llvm-objcopy`, `llvm-objdump`, `llvm-strip`, `llvm-cxxfilt`).
 - **Target Sysroot (`$sysroot`):** All target headers and shared/static libraries (`libc`, `libm`, `libpthread`, `libstdc++.a` / `libc++.a`, X11, Wayland, ALSA, CUPS, D-Bus, Fontconfig, FreeType).
 - **Host Sysroot (`$host_tools`):** Headers and libraries used when compiling build-time tools that run on the `x86_64` build host (such as Hotspot's `adlc` code generator).
 - **Code Generators:**

@@ -44,7 +44,7 @@ declare -r top=$(realpath "$(dirname "$0")/../../..")
 declare -r out_path=$(make_target_dir "$1")
 declare -r sysroot="$out_path/sysroot"
 declare -r build_dir="$out_path/build"
-declare -r clang_bin="$top/prebuilts/clang/host/linux-x86/clang-r596125/bin"
+declare -r clang_bin="$top/prebuilts/clang/host/linux-x86/clang-r614150/bin"
 
 # "Installs" given Debian packages into specified directory.
 function unpack_dependencies() {
