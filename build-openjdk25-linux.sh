@@ -45,6 +45,7 @@ declare -r out_path=$(make_target_dir "$1")
 declare -r sysroot="$out_path/sysroot"
 declare -r build_dir="$out_path/build"
 declare -r clang_bin="$top/prebuilts/clang/host/linux-x86/clang-r614150/bin"
+declare -r autoconf_dir=$(make_target_dir "$out_path/autoconf")
 
 # "Installs" given Debian packages into specified directory.
 function unpack_dependencies() {
@@ -81,8 +82,23 @@ function unpack_dependencies() {
   done
 }
 
+# Installs autoconf into specified directory. The second argument is working directory.
+function install_autoconf() {
+  local -r workdir=$(make_target_dir "$2")
+  local -r installdir=$(make_target_dir "$1")
+  tar -C "$workdir" -xzf ${top}/toolchain/jdk/deps/src/autoconf-2.69.tar.gz
+  (cd "$workdir"/autoconf-2.69 &&
+     M4=${top}/prebuilts/build-tools/linux-x86/bin/m4 \
+     ./configure --prefix="$installdir" ${quiet:+--quiet} &&
+     make ${quiet:+-s} install
+  )
+}
+
 # Prepare
 unpack_dependencies "$sysroot" $top/toolchain/jdk/deps/*.deb
+# JDK 25 ships no generated-configure.sh, so `configure` regenerates it with
+# autoconf. Use autoconf 2.69 built from source rather than the host's.
+install_autoconf "$autoconf_dir" "$out_path"
 
 function dist_logs() {
     [[ -n "${dist_dir:-}" && -e "${build_dir}/build.log" ]] && cp "${build_dir}/build.log" "${dist_dir}/"
@@ -94,6 +110,7 @@ trap dist_logs EXIT
 mkdir -p "$build_dir"
 [[ -n "${quiet:-}" ]] || set -x
 (cd "$build_dir" && 
+   AUTOCONF=${autoconf_dir}/bin/autoconf \
    bash +x "$top/toolchain/jdk/jdk25/configure" \
      "${quiet:+--quiet}" \
      --disable-full-docs \

@@ -79,6 +79,11 @@ else
 	# configure wants that library binary without version suffix
 	ln -s "$sysroot/usr/lib/x86_64-linux-gnu/libfreetype.so.6" "$sysroot/usr/lib/x86_64-linux-gnu/libfreetype.so"
 
+	# JBR25 ships no generated-configure.sh, so `configure` regenerates it with
+	# autoconf. Build autoconf 2.69 from the in-repo source tarball rather than
+	# picking up whatever version the build host happens to have installed.
+	install_autoconf "$autoconf_dir" "$out_path"
+
 	mkdir -p "$build_dir"
 	(
 		cd "$build_dir" &&

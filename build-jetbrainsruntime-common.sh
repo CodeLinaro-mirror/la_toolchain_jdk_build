@@ -71,8 +71,10 @@ function install_autoconf() {
   local -r workdir=$(make_target_dir "$2")
   local -r installdir=$(make_target_dir "$1")
   tar -C "$workdir" -xzf "$top/toolchain/jdk/deps/src/autoconf-2.69.tar.gz"
+  # autoconf records the m4 it was configured with and runs it to generate
+  # `configure`, so point it at the prebuilt m4 rather than the host's.
   (cd "$workdir"/autoconf-2.69 &&
-     ./configure --prefix="$installdir" ${quiet:+--quiet} &&
+     M4="$m4_bin" ./configure --prefix="$installdir" ${quiet:+--quiet} &&
      make ${quiet:+-s} install
   )
 }
@@ -301,10 +303,13 @@ declare -r autoconf_dir=$(make_target_dir "$out_path/autoconf")
 case $(uname) in
   Linux)
     declare -r clang_bin="$top/prebuilts/clang/host/linux-x86/clang-r614150/bin"
+    declare -r m4_bin="$top/prebuilts/build-tools/linux-x86/bin/m4"
     declare -r sysroot="$out_path/sysroot"
     ;;
   Darwin)
     declare -r clang_bin="$top/prebuilts/clang/host/darwin-x86/clang-r487747c/bin"
+    # Universal binary (x86_64 and arm64).
+    declare -r m4_bin="$top/prebuilts/build-tools/darwin-x86/bin/m4"
     declare -r sysroot=$(xcrun --show-sdk-path)
     ;;
   CYGWIN*) # Windows Cygwin

@@ -37,7 +37,7 @@ Each build produces three primary archives in `<dist_dir>`:
 - **Target Sysroot (`$sysroot`):** All target headers and shared/static libraries (`libc`, `libm`, `libpthread`, `libstdc++.a` / `libc++.a`, X11, Wayland, ALSA, CUPS, D-Bus, Fontconfig, FreeType).
 - **Host Sysroot (`$host_tools`):** Headers and libraries used when compiling build-time tools that run on the `x86_64` build host (such as Hotspot's `adlc` code generator).
 - **Code Generators:**
-  - `autoconf`: OpenJDK/JBR source trees in this repository do not ship a pre-generated `make/autoconf/generated-configure.sh`. `configure` regenerates it on every build. To prevent picking up the host OS's autoconf version, scripts call `install_autoconf`, building autoconf 2.69 hermetically from `toolchain/jdk/deps/src/autoconf-2.69.tar.gz`. (Tracked for older scripts in [b/561712160](http://b/561712160)).
+  - `autoconf`: OpenJDK/JBR source trees in this repository do not ship a pre-generated `make/autoconf/generated-configure.sh`. `configure` regenerates it on every build. To prevent picking up the host OS's autoconf version, scripts call `install_autoconf`, building autoconf 2.69 hermetically from `toolchain/jdk/deps/src/autoconf-2.69.tar.gz`. autoconf records the `m4` it was configured with and runs it to generate `configure`, so `install_autoconf` points it at the prebuilt `prebuilts/build-tools/<os>/bin/m4` ([b/561712160](http://b/561712160)).
   - `wayland-scanner`: Unpacked into `$host_tools/usr/bin/wayland-scanner` from the vendored amd64 `libwayland-bin` package (`deps/jbr25/linux_host_tools`).
 - **Boot & Build JDK:** Provided by `prebuilts/jdk/studio/jbr25/linux`.
 
@@ -163,7 +163,7 @@ The headless musl build follows `build-openjdk25-linux-musl.sh`, the musl JDK us
 
 | Bug ID | Summary | Status |
 | :--- | :--- | :--- |
-| [b/561712160](http://b/561712160) | Host `autoconf` leak in older Linux OpenJDK/JBR build scripts (`install_autoconf` not called) | Open (Fixed in new `aarch64` script) |
+| [b/561712160](http://b/561712160) | Host `autoconf`/`m4` leak in Linux OpenJDK/JBR build scripts (`install_autoconf` not called, host `m4` used) | Fixed for the 25 scripts |
 | [b/561712262](http://b/561712262) | `build-jbr25-linux-x64.sh` statically links `libXi.a`/`libXtst.a` into `libawt_xawt.so` due to missing runtime `.deb`s | Fixed (both scripts link and bundle `libXi.so.6`/`libXtst.so.6`) |
 | [b/561729389](http://b/561729389) | Duplicate `--with-tools-dir` and `--with-toolchain-path` flags in older build scripts | Open (Fixed in `aarch64` script) |
 | [b/562108269](http://b/562108269) | Missing `export` on `SOURCE_DATE_EPOCH` in JBR build scripts | Fixed |
