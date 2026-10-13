@@ -188,8 +188,9 @@ echo "Creating java runtime ...."
 	echo "Java Runtime Done"
 )
 
-# Temporary: run the aarch64 cross builds during the x64 CI job to verify all
-# Linux JBR25 targets on the CI environment.
+# Temporary (b/573307292): run the aarch64 cross builds during the x64 CI job to
+# verify all Linux JBR25 targets on the CI environment until dedicated CI
+# targets are configured.
 echo "=== Temporary CI test: Building Linux aarch64 (glibc) ==="
 "$(dirname "$0")/build-jbr25-linux-aarch64.sh" \
 	${quiet:+-q} \

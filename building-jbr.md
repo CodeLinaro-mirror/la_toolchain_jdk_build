@@ -19,7 +19,8 @@ All build scripts reside in `toolchain/jdk/build/` and accept common flags parse
 | `linux-musl-aarch64-headless` (musl, headless-only) | `build-jbr25-linux-musl-aarch64-headless.sh` | Cross (`x86_64` host) | `musl` 1.2.6, shipped in `lib/` | `prebuilts/build-tools/sysroots/aarch64-unknown-linux-musl` + Alpine 3.23 aarch64 apks (`deps/jbr25/linux_musl_arm64_headless`) |
 | `mac-x64` | `build-jbr25-mac-x64.sh` | Native (`x86_64` macOS) | macOS SDK | Xcode macOS SDK |
 | `mac-aarch64` | `build-jbr25-mac-aarch64.sh` | Native (`arm64` macOS) | macOS SDK | Xcode macOS SDK |
-| `win-x64` | `build-jbr25-win-x64.{sh,cmd}` | Native (`x86_64` Windows) | MSVC CRT | Visual Studio toolchain |
+| `win-x64` | `build-jbr25-win-x64.{sh,cmd}` | Native (`x86_64` Windows) | MSVC CRT | Visual Studio toolchain (`x64`) |
+| `win-aarch64` | `build-jbr25-win-aarch64.{sh,cmd}` | Cross (`x86_64` Windows) or Native (`arm64` Windows) | MSVC CRT | Visual Studio toolchain (`Hostx64/arm64`) |
 
 Each build produces three primary archives in `<dist_dir>`:
 1. `jdk.zip`: Full JDK image (`images/jdk` without `demo/` and `man/`, debuginfo stripped to `.diz`).
@@ -138,6 +139,14 @@ The headless musl build follows `build-openjdk25-linux-musl.sh`, the musl JDK us
 - **Headless-only:** `--enable-headless-only` drops `libawt_xawt`, `libawt_wlawt` and `libsplashscreen` (`AwtLibraries.gmk`; `libjawt` is still built, with `-DHEADLESS` and linked against `libawt_headless`), and with them every X11 and Wayland dependency, including `wayland-scanner`. `java.desktop` is still built and works in headless mode. `verifyHeadlessImage` fails the build if `libawt_headless.so` is missing or any of the toolkit libraries is present.
 - **Loader search path:** the bundled musl loader searches only `/lib:/usr/local/lib:/usr/lib` (plus `LD_LIBRARY_PATH` and the `needed_by` chain's rpaths) and never Debian multiarch directories. On a glibc distribution a system library would therefore neither be found nor be loadable (it would be glibc-linked). This is why freetype is bundled here (section 5). `libasound.so.2` is the only remaining external `DT_NEEDED` (`$musl_headless_target_system_libraries`); `libjsound` loads only when sound is used. `libfontconfig.so.1` and `libcups.so.2` are `dlopen`ed and resolve only where a musl build of them is installed under `/usr/lib` (Alpine); fontconfig-dependent font lookup on other distributions is an open item.
 
+### 4.8 Windows ARM64 Cross-Compilation (`win-x64` $\to$ `win-aarch64`)
+`build-jbr25-win-aarch64.{sh,cmd}` cross-compiles JBR25 for Windows ARM64 (`--openjdk-target=aarch64-unknown-cygwin`) from an `x86_64` Windows host running Cygwin:
+- **MSVC Host & Target Compilers:** OpenJDK's `toolchain_microsoft.m4` runs `vcvarsamd64_arm64.bat` to configure target `aarch64` compilers (`Hostx64/arm64/{cl,link,lib}.exe`) and `vcvars64.bat` (`TOOLCHAIN_SETUP_BUILD_COMPILERS`) to configure build-host `x86_64` compilers (`Hostx64/x64/{cl,link,ml64,lib}.exe`).
+- **Skipping Interim `buildjdk` & Host `jlink`:** Both `--with-boot-jdk="$boot_jdk"` and `--with-build-jdk="$boot_jdk"` point to `prebuilts/jdk/studio/jbr25/win` (`x86_64`), avoiding compiling a duplicate `buildjdk` and providing the host `jlink` used to assemble `java-runtime/image` from the target `aarch64` `jmods`. Because `jlink.exe` is a native Win32 executable rather than a Cygwin binary, `--module-path` must be converted via `cygpath -m` (`--module-path="$(cygpath -m "${jbr_jdk_dir}/jmods")"`). Passing a `/cygdrive/...` path causes `jlink.exe` to miss the target `jmods/` directory and fall back to its own `java.home` (which in `prebuilts/jdk/studio/jbr25/win` has no `jmods/`, failing with `Error: This JDK does not support linking from the current run-time image`).
+- **NVDA Screen Reader Client:** `--with-nvdacontrollerclient="$top/prebuilts/jdk/studio/nvda/stable"` automatically selects the `arm64/nvdaControllerClient.{dll,lib}` subdirectory (`lib-nvdacontrollerclient.m4`).
+- **Static PE Architecture Verification (`verifyWindowsImageCpuArchitecture`):** In `toolchain_microsoft.m4`, `TOOLCHAIN_CHECK_POSSIBLE_MSVC_DLL` checks `aarch64` MSVC runtime DLLs (`vcruntime140.dll`, `msvcp140.dll`) against `"PE32+ executable"` without an architecture suffix; if the `arm64` MSVC redistributables are absent on the build host, `configure` falls back to probing `$BOOT_JDK/bin/` and `$SYSTEMROOT/system32/` and could silently bundle `x86_64` DLLs. `verifyWindowsImageCpuArchitecture` inspects every `.exe` and `.dll` (and any `PE32` file) in both `images/jdk` and `java-runtime/image` via `file` to guarantee every PE binary is built for the expected CPU architecture (`ARM64|Aarch64` for `win-aarch64`, `x86-64` for `win-x64`).
+- **Conditional `TestAwt.java` Execution:** `TestAwt.java` runs automatically when the build executes on an ARM64 Windows machine and is skipped when cross-compiling on an `x86_64` host.
+
 ---
 
 ## 5. Platform & Configuration Decisions
@@ -167,3 +176,6 @@ The headless musl build follows `build-openjdk25-linux-musl.sh`, the musl JDK us
 | [b/561712262](http://b/561712262) | `build-jbr25-linux-x64.sh` statically links `libXi.a`/`libXtst.a` into `libawt_xawt.so` due to missing runtime `.deb`s | Fixed (both scripts link and bundle `libXi.so.6`/`libXtst.so.6`) |
 | [b/561729389](http://b/561729389) | Duplicate `--with-tools-dir` and `--with-toolchain-path` flags in older build scripts | Fixed for the 25 scripts |
 | [b/562108269](http://b/562108269) | Missing `export` on `SOURCE_DATE_EPOCH` in JBR build scripts | Fixed |
+| [b/573301997](http://b/573301997) | Add JBR 25 Windows ARM64 (`win-aarch64`) build | In progress |
+| [b/573307292](http://b/573307292) | Decouple Linux ARM64 JBR25 builds from `linux_jetbrainsruntime25` into dedicated CI targets | Open |
+| [b/573307176](http://b/573307176) | Detach Windows ARM64 JBR25 build from `win_jetbrainsruntime25` into a dedicated CI target | Open |

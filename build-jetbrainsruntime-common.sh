@@ -107,6 +107,64 @@ function verifyMacBinaryCpuArchitecture() {
   fi
 }
 
+# Verifies that a Windows PE binary was built for the expected CPU architecture
+# (as reported by `file`, e.g. "x86-64" or "ARM64|Aarch64").
+function verifyWindowsBinaryCpuArchitecture() {
+  local -r binary=$1
+  local -r expected_arch=$2
+
+  if [[ ! -f "$binary" ]]; then
+    echo "$binary does not exist"
+    exit 2
+  fi
+
+  local -r desc=$(file -b -- "$binary")
+  echo "$binary: $desc"
+  if [[ "$desc" != *"PE32"* ]] || [[ ! "$desc" =~ $expected_arch ]]; then
+    echo "$binary is not a Windows PE binary built for $expected_arch"
+    exit 3
+  fi
+}
+
+# Verifies that every PE executable and DLL under the given directory was built
+# for the expected CPU architecture (as reported by `file`, e.g. "x86-64" or
+# "ARM64|Aarch64"). Used by the Windows builds to ensure no build-host (x64)
+# binaries or redistributable DLLs leak into a cross-compiled target image.
+function verifyWindowsImageCpuArchitecture() {
+  local -r image=$1
+  local -r expected_arch=$2
+  local line
+  local count=0
+  local mismatched=""
+
+  if [[ ! -d "$image" ]]; then
+    echo "$image does not exist"
+    exit 2
+  fi
+
+  while IFS= read -r line; do
+    if [[ "$line" == *": PE32"* ]] || [[ "${line%%:*}" =~ \.(exe|dll|EXE|DLL)$ ]]; then
+      count=$((count + 1))
+      if [[ ! "$line" =~ $expected_arch ]]; then
+        mismatched+="$line"$'\n'
+      fi
+    fi
+  done < <(find -L "$image" -type f -print0 | xargs -0 file --)
+
+  if (( count == 0 )); then
+    echo "$image: no Windows PE binaries found"
+    exit 2
+  fi
+
+  if [[ -n "$mismatched" ]]; then
+    echo "$image contains Windows binaries not built for $expected_arch:"
+    printf "%s" "$mismatched"
+    exit 3
+  fi
+
+  echo "$image: verified $count Windows PE binaries are built for $expected_arch"
+}
+
 # "Installs" given Debian packages into specified directory.
 function unpack_dependencies() {
   local -r target_dir="$1"

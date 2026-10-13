@@ -13,6 +13,16 @@ out_path=$(cygpath --unix --absolute "${out_path}")
 dist_dir=$(cygpath --unix --absolute "${dist_dir}")
 top=$(cygpath --unix --absolute "${top}")
 
+function dist_logs() {
+  if [[ -f "$build_dir/build.log" ]]; then
+    cp "$build_dir/build.log" "$dist_dir/"
+  fi
+  if [[ -f "$build_dir/configure-support/config.log" ]]; then
+    cp "$build_dir/configure-support/config.log" "$dist_dir/configure.log"
+  fi
+}
+trap dist_logs EXIT
+
 echo "out_path=${out_path:-}"
 echo "dist_dir=${dist_dir:-}"
 echo "build_dir=${build_dir:-}"
@@ -61,7 +71,7 @@ else
 
   (
     declare -r make_log_level=${quiet:+warn}
-    make -C "$build_dir" JOBS=1 LOG=${make_log_level:-debug} ${quiet:+-s} images
+    make -C "$build_dir" LOG=${make_log_level:-debug} ${quiet:+-s} images
   )
 
   rm -rf "$dist_dir"/{jdk.zip,jdk-debuginfo.zip,jdk-runtime.zip,build.log,configure.log}
@@ -73,11 +83,11 @@ else
     mkdir -p legal/nvda
     cp "$top/prebuilts/jdk/studio/nvda/stable/license.txt" ./legal/nvda/LICENSE
 
+    verifyWindowsImageCpuArchitecture "$build_dir/images/jdk" "x86-64"
+
     zip -9rDy${quiet:+q} "$dist_dir"/jdk.zip . -x'*.diz'
     zip -9rDy${quiet:+q} "$dist_dir"/jdk-debuginfo.zip . -i'*.diz'
   )
-  cp "$build_dir"/build.log "$dist_dir"
-  cp "$build_dir"/configure-support/config.log "$dist_dir"/configure.log
 fi
 
 echo "Creating java runtime ...."
@@ -107,7 +117,7 @@ echo "Creating java runtime ...."
     --no-man-pages \
     --strip-debug \
     --compress=zip-9 \
-    --module-path="${jbr_jdk_dir}/jmods" \
+    --module-path="$(cygpath -m "${jbr_jdk_dir}/jmods")" \
     --add-modules ${modules} \
     --output "image"
 
@@ -116,6 +126,8 @@ echo "Creating java runtime ...."
 
   mkdir -p "${runtime_image_dir}/legal/nvda"
   cp "$top/prebuilts/jdk/studio/nvda/stable/license.txt" "${runtime_image_dir}/legal/nvda/LICENSE"
+
+  verifyWindowsImageCpuArchitecture "${runtime_image_dir}" "x86-64"
 
   cd ${runtime_image_dir}
   zip -9rDy${quiet:+q} "${dist_dir}/jdk-runtime.zip" .
@@ -134,5 +146,14 @@ echo "Testing java runtime ...."
   fi
   echo "Java Test Done"
 )
+
+# Temporary (b/573307176): run the aarch64 cross build during the x64 CI job
+# until a dedicated Windows ARM64 CI target is configured.
+echo "=== Temporary CI test: Building Windows aarch64 ==="
+"$(dirname "$0")/build-jbr25-win-aarch64.sh" \
+  ${quiet:+-q} \
+  -b "$build_number" \
+  -o "$out_path/win-aarch64" \
+  -d "$dist_dir/win-aarch64"
 
 echo "All Done!"
