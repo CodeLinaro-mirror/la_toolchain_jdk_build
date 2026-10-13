@@ -112,7 +112,6 @@ else
 				--with-sysroot="$sysroot" \
 				--with-stdc++lib=static \
 				--with-toolchain-type=clang \
-				--with-tools-dir="$clang_bin" \
 				--with-toolchain-path="$clang_bin" \
 				--with-freetype-include="$sources_dir/src/java.desktop/share/native/libfreetype/include" \
 				--with-freetype-lib="$sysroot/usr/lib/x86_64-linux-gnu" \

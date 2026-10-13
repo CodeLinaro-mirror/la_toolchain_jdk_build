@@ -165,5 +165,5 @@ The headless musl build follows `build-openjdk25-linux-musl.sh`, the musl JDK us
 | :--- | :--- | :--- |
 | [b/561712160](http://b/561712160) | Host `autoconf`/`m4` leak in Linux OpenJDK/JBR build scripts (`install_autoconf` not called, host `m4` used) | Fixed for the 25 scripts |
 | [b/561712262](http://b/561712262) | `build-jbr25-linux-x64.sh` statically links `libXi.a`/`libXtst.a` into `libawt_xawt.so` due to missing runtime `.deb`s | Fixed (both scripts link and bundle `libXi.so.6`/`libXtst.so.6`) |
-| [b/561729389](http://b/561729389) | Duplicate `--with-tools-dir` and `--with-toolchain-path` flags in older build scripts | Open (Fixed in `aarch64` script) |
+| [b/561729389](http://b/561729389) | Duplicate `--with-tools-dir` and `--with-toolchain-path` flags in older build scripts | Fixed for the 25 scripts |
 | [b/562108269](http://b/562108269) | Missing `export` on `SOURCE_DATE_EPOCH` in JBR build scripts | Fixed |

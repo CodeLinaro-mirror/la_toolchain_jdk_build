@@ -132,7 +132,7 @@ mkdir -p "$build_dir"
      --with-native-debug-symbols=external \
      --with-stdc++lib=static \
      --with-toolchain-type=clang \
-     --with-tools-dir="$clang_bin" \
+     --with-toolchain-path="$clang_bin" \
      --with-version-pre= \
      --with-version-opt=${BUILD_NUMBER:-0} \
      --with-vendor-version-string=Android_PDK \
