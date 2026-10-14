@@ -93,7 +93,8 @@ mkdir -p "$build_dir"
      --with-version-pre= \
      --with-version-opt=${BUILD_NUMBER:-0} \
      --with-vendor-version-string=Android_PDK \
-     --with-zlib=bundled
+     --with-zlib=bundled \
+     --with-extra-cflags="-fno-define-target-os-macros"
 )
 
 # Make

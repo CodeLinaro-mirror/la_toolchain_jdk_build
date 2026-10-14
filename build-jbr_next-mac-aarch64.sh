@@ -48,6 +48,11 @@ else
   # Darwin lacks autoconf, install it for this build.
   install_autoconf "$autoconf_dir" "$out_path"
 
+  # disable 'gnu-folding-constant' for SystemHotkey.m
+  declare -r disable_compiler_warnings_flags="\
+    -Wno-gnu-folding-constant \
+    "
+
   # Configure
   mkdir -p "$build_dir"
   (cd "$build_dir" &&
@@ -75,7 +80,9 @@ else
      --with-boot-jdk="$boot_jdk" \
      --with-sysroot="$sysroot" \
      --with-stdc++lib=static \
-     --with-toolchain-type=clang
+     --with-toolchain-type=clang \
+     --with-extra-cflags="$disable_compiler_warnings_flags -mmacosx-version-min=11.0" \
+     --with-extra-cxxflags="$disable_compiler_warnings_flags -mmacosx-version-min=11.0"
   )
 
   echo "Configure done"

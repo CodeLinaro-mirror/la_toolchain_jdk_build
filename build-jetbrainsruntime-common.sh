@@ -365,7 +365,7 @@ case $(uname) in
     declare -r sysroot="$out_path/sysroot"
     ;;
   Darwin)
-    declare -r clang_bin="$top/prebuilts/clang/host/darwin-x86/clang-r487747c/bin"
+    declare -r clang_bin="$top/prebuilts/clang/host/darwin-x86/clang-r614150/bin"
     # Universal binary (x86_64 and arm64).
     declare -r m4_bin="$top/prebuilts/build-tools/darwin-x86/bin/m4"
     declare -r sysroot=$(xcrun --show-sdk-path)
