@@ -57,7 +57,7 @@ else
 	# shared with the cross builds rather than listed as a target dependency.
 	# For this native build the build host is the target, so it can simply go
 	# into the sysroot like any other amd64 package.
-	unpack_dependencies "$sysroot" $host_tools_deps/*.deb
+	unpack_dependencies "$sysroot" $host_tools_deps/libwayland-bin_*.deb
 
 	# Ubuntu 20.04 have too old version of wayland-protocols
 	# use separatelly downloaded 1.45 version
@@ -71,10 +71,20 @@ else
 		cp -r wayland-protocols-1.45/experimental $sysroot/usr/share/wayland-protocols
 	)
 
+	# Ubuntu 20.04's Vulkan headers are too old for --with-vulkan as well
+	declare -r vulkan_loader_path=$out_path/vulkan-loader && mkdir -p $vulkan_loader_path
+	tar -C "$vulkan_loader_path" -xf $build_deps/vulkan-loader_1.3.275.0.orig.tar.xz
+	declare -r vulkan_headers=$vulkan_loader_path/vulkan-loader-1.3.275.0/vulkan-headers
+
 	# use gcc and standart lib from Ubuntu 14.04, to link final artifacts against glibc 2.19
 	unpack_dependencies "$sysroot" $top/toolchain/jdk/deps/libc6*.deb
 	unpack_dependencies "$sysroot" $top/toolchain/jdk/deps/libgcc*.deb
 	unpack_dependencies "$sysroot" $top/toolchain/jdk/deps/libstdc*.deb
+
+	# The Vulkan shader compiler is a build host tool built from source. For
+	# this native build the sysroot is also a valid build host sysroot.
+	declare -r shader_compiler="$out_path/shader-compiler"
+	install_vulkan_shader_compiler "$shader_compiler" "$sysroot" $host_tools_deps/glslang_*.orig.tar.gz
 
 	# configure wants that library binary without version suffix
 	ln -s "$sysroot/usr/lib/x86_64-linux-gnu/libfreetype.so.6" "$sysroot/usr/lib/x86_64-linux-gnu/libfreetype.so"
@@ -87,7 +97,7 @@ else
 	mkdir -p "$build_dir"
 	(
 		cd "$build_dir" &&
-			PATH="$autoconf_dir/bin":$PATH bash +x "$sources_dir/configure" \
+			PATH="$shader_compiler/bin:$autoconf_dir/bin":$PATH bash +x "$sources_dir/configure" \
 				"${quiet:+--quiet}" \
 				--disable-warnings-as-errors \
 				--build=x86_64-unknown-linux-gnu \
@@ -121,6 +131,9 @@ else
 				--with-cups-include="$sysroot/usr/include" \
 				--with-wayland-protocols="$sysroot/usr/share/wayland-protocols" \
 				--with-dbus-includes="$sysroot/usr/include/dbus-1.0 $sysroot/usr/lib/x86_64-linux-gnu/dbus-1.0/include" \
+				--with-vulkan \
+				--with-vulkan-include="$vulkan_headers/include" \
+				--with-vulkan-shader-compiler=glslangValidator \
 				--with-extra-cflags="--sysroot=$sysroot" \
 				--with-extra-cxxflags="--sysroot=$sysroot" \
 				--with-extra-ldflags="--sysroot=$sysroot" \
@@ -131,7 +144,7 @@ else
 	echo "Making images ...."
 
 	declare -r make_log_level=${quiet:+warn}
-	make -C "$build_dir" LOG=${make_log_level:-debug} ${quiet:+-s} images
+	PATH="$shader_compiler/bin":$PATH make -C "$build_dir" LOG=${make_log_level:-debug} ${quiet:+-s} images
 
 	bundleLinuxLibraries "$build_dir/images/jdk" "$sysroot" "$sysroot/usr/lib/x86_64-linux-gnu" "X86-64"
 	verifyLinuxSharedLibraryDependencies "$build_dir/images/jdk" "$linux_target_system_libraries"

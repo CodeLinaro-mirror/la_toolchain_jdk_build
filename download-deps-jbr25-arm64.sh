@@ -147,6 +147,12 @@ echo "Requested architecture independent packages: $arch_independent_pkgs"
 # Directly download newer one separatelly
 wget https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/wayland-protocols/1.45-1~ubuntu0.24.04.1/wayland-protocols_1.45.orig.tar.xz
 
+# Ubuntu 20.04's libvulkan-dev 1.2.131 predates VK_EXT_swapchain_maintenance1
+# (Vulkan-Headers 1.3.237), which the --with-vulkan sources use. Only the headers
+# are needed: libawt dlopen()s libvulkan.so.1 at runtime instead of linking it.
+# Ubuntu 24.04's vulkan-loader source bundles them under vulkan-headers/.
+wget https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/vulkan-loader/1.3.275.0-1build1/vulkan-loader_1.3.275.0.orig.tar.xz
+
 apt-get download $(for p in $target_pkgs $target_runtime_pkgs $target_toolchain_pkgs $target_toolchain_linkonly_pkgs; do echo $p:arm64; done)
 apt-get download $arch_independent_pkgs
 

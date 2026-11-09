@@ -88,11 +88,16 @@ else
 	# library, while preventing BUILD_CXX from falling back to the build host's
 	# system /usr/lib/gcc/x86_64-linux-gnu/4.8 libstdc++.a on older CI images.
 	unpack_dependencies "$host_tools" \
-		$host_tools_deps/*.deb \
+		$host_tools_deps/libwayland-bin_*.deb \
 		$top/toolchain/jdk/deps/libc6*.deb \
 		$top/toolchain/jdk/deps/linux-libc-dev*.deb \
 		$top/toolchain/jdk/deps/libgcc*.deb \
 		$top/toolchain/jdk/deps/libstdc*.deb
+
+	# The Vulkan shader compiler is a build host tool built from source against
+	# $host_tools, like BUILD_CC/BUILD_CXX.
+	declare -r shader_compiler="$out_path/shader-compiler"
+	install_vulkan_shader_compiler "$shader_compiler" "$host_tools" $host_tools_deps/glslang_*.orig.tar.gz
 
 	# Ubuntu 20.04 have too old version of wayland-protocols
 	# use separatelly downloaded 1.45 version
@@ -105,6 +110,11 @@ else
 		cp -r wayland-protocols-1.45/unstable $sysroot/usr/share/wayland-protocols
 		cp -r wayland-protocols-1.45/experimental $sysroot/usr/share/wayland-protocols
 	)
+
+	# Ubuntu 20.04's Vulkan headers are too old for --with-vulkan as well
+	declare -r vulkan_loader_path=$out_path/vulkan-loader && mkdir -p $vulkan_loader_path
+	tar -C "$vulkan_loader_path" -xf $build_deps/vulkan-loader_1.3.275.0.orig.tar.xz
+	declare -r vulkan_headers=$vulkan_loader_path/vulkan-loader-1.3.275.0/vulkan-headers
 
 	# configure wants that library binary without version suffix
 	ln -sfn "libfreetype.so.6" "$sysroot/usr/lib/$target_libdir/libfreetype.so"
@@ -173,7 +183,7 @@ EOF
 	mkdir -p "$build_dir"
 	(
 		cd "$build_dir" &&
-			PATH="$autoconf_dir/bin":$PATH bash +x "$sources_dir/configure" \
+			PATH="$shader_compiler/bin:$autoconf_dir/bin":$PATH bash +x "$sources_dir/configure" \
 				"${quiet:+--quiet}" \
 				--disable-warnings-as-errors \
 				--build=$build_target \
@@ -208,6 +218,9 @@ EOF
 				--with-cups-include="$sysroot/usr/include" \
 				--with-wayland-protocols="$sysroot/usr/share/wayland-protocols" \
 				--with-dbus-includes="$sysroot/usr/include/dbus-1.0 $sysroot/usr/lib/$target_libdir/dbus-1.0/include" \
+				--with-vulkan \
+				--with-vulkan-include="$vulkan_headers/include" \
+				--with-vulkan-shader-compiler=glslangValidator \
 				--with-extra-cflags="--sysroot=$sysroot" \
 				--with-extra-cxxflags="--sysroot=$sysroot" \
 				--with-extra-ldflags="--sysroot=$sysroot" \
@@ -225,7 +238,7 @@ EOF
 	echo "Making images ...."
 
 	declare -r make_log_level=${quiet:+warn}
-	make -C "$build_dir" LOG=${make_log_level:-debug} ${quiet:+-s} images
+	PATH="$shader_compiler/bin":$PATH make -C "$build_dir" LOG=${make_log_level:-debug} ${quiet:+-s} images
 
 	verifyLinuxBinaryCpuArchitecture "$build_dir/images/jdk/bin/java" "AArch64"
 

@@ -40,6 +40,7 @@ Each build produces three primary archives in `<dist_dir>`:
 - **Code Generators:**
   - `autoconf`: OpenJDK/JBR source trees in this repository do not ship a pre-generated `make/autoconf/generated-configure.sh`. `configure` regenerates it on every build. To prevent picking up the host OS's autoconf version, scripts call `install_autoconf`, building autoconf 2.69 hermetically from `toolchain/jdk/deps/src/autoconf-2.69.tar.gz`. autoconf records the `m4` it was configured with and runs it to generate `configure`, so `install_autoconf` points it at the prebuilt `prebuilts/build-tools/<os>/bin/m4` ([b/561712160](http://b/561712160)).
   - `wayland-scanner`: Unpacked into `$host_tools/usr/bin/wayland-scanner` from the vendored amd64 `libwayland-bin` package (`deps/jbr25/linux_host_tools`).
+  - `glslangValidator` (Vulkan shader compiler, see section 5): Built from source by `install_vulkan_shader_compiler` into `$out_path/shader-compiler/bin` with the prebuilt clang against the Ubuntu 14.04 glibc and GCC 8 `libstdc++.a` (`$sysroot` on x64, `$host_tools` on aarch64), from the vendored `glslang_11.1.0.orig.tar.gz` (`deps/jbr25/linux_host_tools`).
 - **Boot & Build JDK:** Provided by `prebuilts/jdk/studio/jbr25/linux`.
 
 ### What Is Permitted from the Host OS
@@ -59,9 +60,9 @@ All Linux JBR25 dependencies are fetched via Docker using a single entry point:
 ```text
 toolchain/jdk/deps/jbr25/
 ├── linux_src/          # Shared upstream source tarballs (.orig.tar.*, .debian.tar.*, .dsc) (333 MB)
-├── linux_host_tools/   # amd64 packages executed on the build host (libwayland-bin) (32 KB)
-├── linux_x64/          # Ubuntu 20.04 amd64 binary & -dev .deb packages (6.6 MB)
-├── linux_arm64/        # Ubuntu 20.04 arm64 + all binary & -dev .deb packages (15 MB)
+├── linux_host_tools/   # Build host tools: amd64 libwayland-bin and the glslang source tarball (3.2 MB)
+├── linux_x64/          # Ubuntu 20.04 amd64 binary & -dev .deb packages + Ubuntu 24.04 vulkan-loader source tarball (9.2 MB)
+├── linux_arm64/        # Ubuntu 20.04 arm64 + all binary & -dev .deb packages + Ubuntu 24.04 vulkan-loader source tarball (17 MB)
 └── linux_musl_arm64_headless/  # Alpine 3.23 aarch64 .apk packages for the headless musl build (650 KB)
 ```
 
@@ -157,6 +158,10 @@ The headless musl build follows `build-openjdk25-linux-musl.sh`, the musl JDK us
   `libawt_xawt.so` links `libXi.so.6` and `libXtst.so.6`, which are not installed on every desktop system (the Googlebook Linux Terminal image has no `libxi6`); without them the X11 toolkit fails to load. Both Linux scripts copy them from the sysroot into `lib/` of the JDK and runtime images (`bundleLinuxLibraries`, `copyBundledLinuxLibraries`), with the Debian copyright files under `legal/bundled-libraries/`. `libawt_xawt.so` finds them through its `$ORIGIN` rpath. `verifyLinuxSharedLibraryDependencies` then fails the build if any `DT_NEEDED` entry is neither shipped in the image nor in `$linux_target_system_libraries` (glibc, `libX11`, `libXext`, `libXrender`, `libfreetype`, `libasound`, `libwayland-client`, `libwayland-cursor`, `libxkbcommon`).
 - **Wayland Protocols Overlay:**
   JBR25's Wakefield/AWT implementation requires Wayland protocols (`fractional-scale-v1`, `idle-notify-v1`) introduced after Ubuntu 20.04's `wayland-protocols` 1.20 package. Both Linux builds (`x86_64` and `aarch64`) unpack `toolchain/jdk/deps/wayland-protocols-1.45.tar.xz` over `$sysroot/usr/share/wayland-protocols`.
+- **Vulkan (`--with-vulkan`, [b/582862121](http://b/582862121)):**
+  IntelliJ 2026.3 starts Android Studio on Linux with `-Dawt.toolkit.name=auto -Dsun.java2d.vulkan=true`. Without `--with-vulkan` the `sun.java2d.vulkan` classes are still compiled, but `AwtLibraries.gmk` drops their native code from `libawt`, `libawt_xawt` and `libawt_wlawt`, so `VKEnv.init` fails with `UnsatisfiedLinkError` and the IDE logs "Vulkan backend is not available". Both glibc Linux builds therefore pass `--with-vulkan`, as upstream JBR does (`jb/project/tools/common/scripts/common.sh`).
+  - **Headers:** The sources use `VK_EXT_swapchain_maintenance1` (Vulkan-Headers 1.3.237 or later), which Ubuntu 20.04's `libvulkan-dev` 1.2.131 predates. Ubuntu 24.04's `vulkan-loader` 1.3.275 source tarball bundles the matching Vulkan-Headers under `vulkan-headers/`; `deps/jbr25/linux_{x64,arm64}/vulkan-loader_1.3.275.0.orig.tar.xz` is fetched from Launchpad like `wayland-protocols`, unpacked into `$out_path/vulkan-loader`, and its `vulkan-headers/include` is passed as `--with-vulkan-include`. `libvulkan.so.1` is `dlopen`ed at runtime, so nothing is linked and the image gains no `DT_NEEDED` entry.
+  - **Shader compiler:** `AwtLibraries.gmk` compiles `src/java.desktop/share/glsl/vulkan/*` to SPIR-V with `glslangValidator --target-env vulkan1.2 -x` (or `glslc`). Ubuntu 20.04's glslang 8.13 rejects `vulkan1.2`, and packaged builds of newer versions need a newer glibc than the Ubuntu 14.04 CI hosts (glibc 2.19) provide (Ubuntu 21.10 and later also compress `.deb` files with zstd, which those hosts cannot unpack). The builds therefore compile `glslangValidator` 11.1.0 from the source tarball Ubuntu 21.04 shipped (fetched from Launchpad), like `install_autoconf` builds autoconf: about 50 `.cpp` files with the prebuilt clang against the Ubuntu 14.04 sysroot, linked with `-static-libstdc++`, standalone compiler only (`ENABLE_OPT=0`, no SPIRV-Tools), with a hand-written `glslang/build_info.h` replacing the CMake-generated one. It takes a few seconds and the binary needs at most `GLIBC_2.14`. The makefiles call the compiler by its bare name, so `$out_path/shader-compiler/bin` is prepended to `PATH` for both `configure` and `make`, and `--with-vulkan-shader-compiler=glslangValidator` keeps `configure` from picking a `glslc` from the host.
 - **Reproducible Timestamps (`SOURCE_DATE_EPOCH`):**
   `SOURCE_DATE_EPOCH` must be exported (`export SOURCE_DATE_EPOCH=$(source_date_epoch $sources_dir)`). Assigning it without `export` causes `configure` to fall back to `from 'current' (default)`, embedding wall-clock timestamps into zip/jmod archives ([b/562108269](http://b/562108269)).
 - **Omission of Redundant Configure Flags:**

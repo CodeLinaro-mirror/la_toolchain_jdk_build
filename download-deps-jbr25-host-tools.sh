@@ -1,15 +1,24 @@
 #!/bin/bash -e
 
-# Downloads the amd64 packages that provide build host tools, as opposed to
-# target libraries. Expects to be run inside the Ubuntu container built from
-# Dockerfile.jbr25_deps, via download-deps-jbr25-in-docker.sh.
+# Downloads the build host tools, as opposed to target libraries. Expects to be
+# run inside the Ubuntu container built from Dockerfile.jbr25_deps, via
+# download-deps-jbr25-in-docker.sh.
 #
-# Currently this is just libwayland-bin, which provides wayland-scanner. That is
-# a code generator invoked during the build, so it must be a binary that runs on
-# the build host rather than on the target. Every Linux JBR25 build uses the
-# same copy: the cross builds unpack it into a host-tools tree kept outside the
-# sysroot, and the native x64 build unpacks it into its sysroot like any other
-# amd64 package.
+# These are code generators invoked during the build, so they must be binaries
+# that run on the build host rather than on the target. Every Linux JBR25 build
+# uses the same copies.
+#
+# libwayland-bin provides wayland-scanner. The cross builds unpack it into a
+# host-tools tree kept outside the sysroot, and the native x64 build unpacks it
+# into its sysroot like any other amd64 package.
+#
+# glslang provides glslangValidator, which compiles the Vulkan shaders
+# (src/java.desktop/share/glsl/vulkan) into SPIR-V for --with-vulkan. JBR runs
+# it with --target-env vulkan1.2, which focal's glslang 8.13 does not support,
+# and newer packaged builds need a newer glibc than the Ubuntu 14.04 CI hosts
+# have. The builds therefore compile it from source (install_vulkan_shader_compiler
+# in build-jetbrainsruntime-common.sh). The 11.1.0 source tarball is the one
+# Ubuntu 21.04 shipped, fetched from Launchpad like wayland-protocols.
 
 host_pkgs=$(
 	echo \
@@ -27,6 +36,8 @@ mkdir -p $target_dir/src
 cd $target_dir
 
 echo "Requested host packages: $host_pkgs"
+
+wget https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/glslang/11.1.0-3build1/glslang_11.1.0.orig.tar.gz
 
 apt-get download $(for p in $host_pkgs; do echo $p:amd64; done)
 (cd src && apt-get source --download-only $host_pkgs)
